@@ -33,6 +33,27 @@ db.exec(`
   );
 `);
 
+// Seed Database if empty
+const vocabCount = db.prepare("SELECT COUNT(*) as count FROM vocabulary").get().count;
+if (vocabCount === 0) {
+  try {
+    const initialVocabPath = path.join(process.cwd(), "src/data/initialVocabulary.json");
+    if (fs.existsSync(initialVocabPath)) {
+      const initialVocab = JSON.parse(fs.readFileSync(initialVocabPath, "utf-8"));
+      const insert = db.prepare("INSERT INTO vocabulary (word, meaning, synonym, antonym, day_number) VALUES (?, ?, ?, ?, ?)");
+      const transaction = db.transaction((words) => {
+        for (const word of words) {
+          insert.run(word.word, word.meaning, word.synonym, word.antonym, word.day_number);
+        }
+      });
+      transaction(initialVocab);
+      console.log(`Successfully seeded database with ${initialVocab.length} words.`);
+    }
+  } catch (error) {
+    console.error("Failed to seed database:", error);
+  }
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json());
