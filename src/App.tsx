@@ -162,7 +162,10 @@ const DailyVocabulary = ({
     if (selectedDay) {
       setLoading(true);
       fetch(`/api/vocabulary/day/${selectedDay}`)
-        .then(res => res.json())
+        .then(async res => {
+          if (!res.ok) throw new Error("Server error");
+          return res.json();
+        })
         .then(data => {
           if (data && data.length > 0) {
             setWords(data);
@@ -172,12 +175,14 @@ const DailyVocabulary = ({
             // Map to include a fake ID if needed for keys
             setWords(dayWords.map((w, i) => ({ ...w, id: -1 - i })));
           }
-          setLoading(false);
         })
-        .catch(() => {
+        .catch((err) => {
+          console.error("Daily vocab fetch error:", err);
           // Fallback on error
           const dayWords = initialVocabulary.filter(w => w.day_number === selectedDay);
           setWords(dayWords.map((w, i) => ({ ...w, id: -1 - i })));
+        })
+        .finally(() => {
           setLoading(false);
         });
     }
@@ -305,33 +310,57 @@ const Exam = ({ days, completedDays, fetchData }: { days: number[], completedDay
     setLoading(true);
     let wordsToTest: Word[] = [];
     
-    if (type === 'day') {
-      const res = await fetch(`/api/vocabulary/day/${value}`);
-      wordsToTest = await res.json();
-      if (wordsToTest.length === 0) {
-        wordsToTest = initialVocabulary
-          .filter(w => w.day_number === value)
-          .map((w, i) => ({ ...w, id: -1 - i }));
+    try {
+      if (type === 'day') {
+        try {
+          const res = await fetch(`/api/vocabulary/day/${value}`);
+          if (res.ok) wordsToTest = await res.json();
+        } catch (e) { console.error("API Error:", e); }
+        
+        if (wordsToTest.length === 0) {
+          wordsToTest = initialVocabulary
+            .filter(w => w.day_number === value)
+            .map((w, i) => ({ ...w, id: -1 - i }));
+        }
+      } else if (type === 'range') {
+        try {
+          const res = await fetch(`/api/vocabulary`);
+          if (res.ok) {
+            const allWords: Word[] = await res.json();
+            wordsToTest = allWords.filter(w => w.day_number >= value[0] && w.day_number <= value[1]);
+          }
+        } catch (e) { console.error("API Error:", e); }
+        
+        if (wordsToTest.length === 0) {
+          wordsToTest = initialVocabulary
+            .filter(w => w.day_number >= value[0] && w.day_number <= value[1])
+            .map((w, i) => ({ ...w, id: -1 - i }));
+        }
+      } else {
+        try {
+          const res = await fetch(`/api/vocabulary`);
+          if (res.ok) {
+            const allWords: Word[] = await res.json();
+            wordsToTest = allWords.sort(() => 0.5 - Math.random()).slice(0, 20);
+          }
+        } catch (e) { console.error("API Error:", e); }
+        
+        if (wordsToTest.length === 0) {
+          wordsToTest = [...initialVocabulary]
+            .sort(() => 0.5 - Math.random())
+            .slice(0, 20)
+            .map((w, i) => ({ ...w, id: -1 - i }));
+        }
       }
-    } else if (type === 'range') {
-      const res = await fetch(`/api/vocabulary`);
-      const allWords: Word[] = await res.json();
-      wordsToTest = allWords.filter(w => w.day_number >= value[0] && w.day_number <= value[1]);
-      if (wordsToTest.length === 0) {
-        wordsToTest = initialVocabulary
-          .filter(w => w.day_number >= value[0] && w.day_number <= value[1])
-          .map((w, i) => ({ ...w, id: -1 - i }));
-      }
-    } else {
-      const res = await fetch(`/api/vocabulary`);
-      const allWords: Word[] = await res.json();
-      wordsToTest = allWords.sort(() => 0.5 - Math.random()).slice(0, 20);
-      if (wordsToTest.length === 0) {
-        wordsToTest = [...initialVocabulary]
-          .sort(() => 0.5 - Math.random())
-          .slice(0, 20)
-          .map((w, i) => ({ ...w, id: -1 - i }));
-      }
+    } catch (error) {
+      console.error("Exam start error:", error);
+      // Final fallback if everything fails
+      wordsToTest = [...initialVocabulary]
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 20)
+        .map((w, i) => ({ ...w, id: -1 - i }));
+    } finally {
+      setLoading(false);
     }
 
     if (wordsToTest.length === 0) {
@@ -767,18 +796,18 @@ export default function App() {
   const fetchData = async () => {
     try {
       const [statsRes, daysRes, progressRes] = await Promise.all([
-        fetch('/api/stats'),
-        fetch('/api/vocabulary/days'),
-        fetch('/api/progress')
+        fetch('/api/stats').catch(() => ({ ok: false, json: () => null })),
+        fetch('/api/vocabulary/days').catch(() => ({ ok: false, json: () => [] })),
+        fetch('/api/progress').catch(() => ({ ok: false, json: () => [] }))
       ]);
       
-      const statsData = await statsRes.json();
-      const daysData = await daysRes.json();
-      const progressData = await progressRes.json();
+      const statsData = (statsRes as any).ok ? await (statsRes as any).json() : null;
+      const daysData = (daysRes as any).ok ? await (daysRes as any).json() : [];
+      const progressData = (progressRes as any).ok ? await (progressRes as any).json() : [];
 
-      setStats(statsData);
+      if (statsData) setStats(statsData);
       
-      if (daysData.length > 0) {
+      if (daysData && daysData.length > 0) {
         setDays(daysData);
       } else {
         // Fallback to initial vocabulary days if DB is empty
@@ -786,7 +815,7 @@ export default function App() {
         setDays(initialDays);
       }
       
-      setCompletedDays(progressData);
+      if (progressData) setCompletedDays(progressData);
     } catch (error) {
       console.error("Failed to fetch data:", error);
       // Fallback on error too
