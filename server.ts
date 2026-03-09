@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
+import { initialVocabulary } from "./src/data/initialVocabulary";
 
 const db = new Database("vocab.db");
 
@@ -37,18 +38,14 @@ db.exec(`
 const vocabCount = db.prepare("SELECT COUNT(*) as count FROM vocabulary").get().count;
 if (vocabCount === 0) {
   try {
-    const initialVocabPath = path.join(process.cwd(), "src/data/initialVocabulary.json");
-    if (fs.existsSync(initialVocabPath)) {
-      const initialVocab = JSON.parse(fs.readFileSync(initialVocabPath, "utf-8"));
-      const insert = db.prepare("INSERT INTO vocabulary (word, meaning, synonym, antonym, day_number) VALUES (?, ?, ?, ?, ?)");
-      const transaction = db.transaction((words) => {
-        for (const word of words) {
-          insert.run(word.word, word.meaning, word.synonym, word.antonym, word.day_number);
-        }
-      });
-      transaction(initialVocab);
-      console.log(`Successfully seeded database with ${initialVocab.length} words.`);
-    }
+    const insert = db.prepare("INSERT INTO vocabulary (word, meaning, synonym, antonym, day_number) VALUES (?, ?, ?, ?, ?)");
+    const transaction = db.transaction((words) => {
+      for (const word of words) {
+        insert.run(word.word, word.meaning, word.synonym, word.antonym, word.day_number);
+      }
+    });
+    transaction(initialVocabulary);
+    console.log(`Successfully seeded database with ${initialVocabulary.length} words.`);
   } catch (error) {
     console.error("Failed to seed database:", error);
   }
@@ -92,26 +89,17 @@ async function startServer() {
 
   app.post("/api/vocabulary/seed", (req, res) => {
     try {
-      const initialVocabPath = path.join(process.cwd(), "src/data/initialVocabulary.json");
-      if (fs.existsSync(initialVocabPath)) {
-        const initialVocab = JSON.parse(fs.readFileSync(initialVocabPath, "utf-8"));
-        const insert = db.prepare("INSERT INTO vocabulary (word, meaning, synonym, antonym, day_number) VALUES (?, ?, ?, ?, ?)");
-        const transaction = db.transaction((words) => {
-          // Optional: Clear existing if you want a clean restore, but here we just add if missing
-          // db.prepare("DELETE FROM vocabulary").run(); 
-          for (const word of words) {
-            // Check if word already exists to avoid duplicates
-            const exists = db.prepare("SELECT id FROM vocabulary WHERE word = ?").get(word.word);
-            if (!exists) {
-              insert.run(word.word, word.meaning, word.synonym, word.antonym, word.day_number);
-            }
+      const insert = db.prepare("INSERT INTO vocabulary (word, meaning, synonym, antonym, day_number) VALUES (?, ?, ?, ?, ?)");
+      const transaction = db.transaction((words) => {
+        for (const word of words) {
+          const exists = db.prepare("SELECT id FROM vocabulary WHERE word = ?").get(word.word);
+          if (!exists) {
+            insert.run(word.word, word.meaning, word.synonym, word.antonym, word.day_number);
           }
-        });
-        transaction(initialVocab);
-        res.json({ success: true, count: initialVocab.length });
-      } else {
-        res.status(404).json({ error: "Seed file not found" });
-      }
+        }
+      });
+      transaction(initialVocabulary);
+      res.json({ success: true, count: initialVocabulary.length });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

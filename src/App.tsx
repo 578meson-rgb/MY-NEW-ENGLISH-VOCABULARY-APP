@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { extractVocabFromText } from './services/geminiService';
+import { initialVocabulary } from './data/initialVocabulary';
 
 // Types
 interface Word {
@@ -156,7 +157,20 @@ const DailyVocabulary = ({
       fetch(`/api/vocabulary/day/${selectedDay}`)
         .then(res => res.json())
         .then(data => {
-          setWords(data);
+          if (data && data.length > 0) {
+            setWords(data);
+          } else {
+            // Fallback to initial vocabulary for this day
+            const dayWords = initialVocabulary.filter(w => w.day_number === selectedDay);
+            // Map to include a fake ID if needed for keys
+            setWords(dayWords.map((w, i) => ({ ...w, id: -1 - i })));
+          }
+          setLoading(false);
+        })
+        .catch(() => {
+          // Fallback on error
+          const dayWords = initialVocabulary.filter(w => w.day_number === selectedDay);
+          setWords(dayWords.map((w, i) => ({ ...w, id: -1 - i })));
           setLoading(false);
         });
     }
@@ -287,14 +301,23 @@ const Exam = ({ days, completedDays }: { days: number[], completedDays: number[]
     if (type === 'day') {
       const res = await fetch(`/api/vocabulary/day/${value}`);
       wordsToTest = await res.json();
+      if (wordsToTest.length === 0) {
+        wordsToTest = initialVocabulary.filter(w => w.day_number === value);
+      }
     } else if (type === 'range') {
       const res = await fetch(`/api/vocabulary`);
       const allWords: Word[] = await res.json();
       wordsToTest = allWords.filter(w => w.day_number >= value[0] && w.day_number <= value[1]);
+      if (wordsToTest.length === 0) {
+        wordsToTest = initialVocabulary.filter(w => w.day_number >= value[0] && w.day_number <= value[1]);
+      }
     } else {
       const res = await fetch(`/api/vocabulary`);
       const allWords: Word[] = await res.json();
       wordsToTest = allWords.sort(() => 0.5 - Math.random()).slice(0, 20);
+      if (wordsToTest.length === 0) {
+        wordsToTest = [...initialVocabulary].sort(() => 0.5 - Math.random()).slice(0, 20);
+      }
     }
 
     if (wordsToTest.length === 0) {
@@ -679,15 +702,34 @@ export default function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const fetchData = async () => {
-    const [statsRes, daysRes, progressRes] = await Promise.all([
-      fetch('/api/stats'),
-      fetch('/api/vocabulary/days'),
-      fetch('/api/progress')
-    ]);
-    
-    setStats(await statsRes.json());
-    setDays(await daysRes.json());
-    setCompletedDays(await progressRes.json());
+    try {
+      const [statsRes, daysRes, progressRes] = await Promise.all([
+        fetch('/api/stats'),
+        fetch('/api/vocabulary/days'),
+        fetch('/api/progress')
+      ]);
+      
+      const statsData = await statsRes.json();
+      const daysData = await daysRes.json();
+      const progressData = await progressRes.json();
+
+      setStats(statsData);
+      
+      if (daysData.length > 0) {
+        setDays(daysData);
+      } else {
+        // Fallback to initial vocabulary days if DB is empty
+        const initialDays = Array.from(new Set(initialVocabulary.map(w => w.day_number))).sort((a, b) => a - b);
+        setDays(initialDays);
+      }
+      
+      setCompletedDays(progressData);
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+      // Fallback on error too
+      const initialDays = Array.from(new Set(initialVocabulary.map(w => w.day_number))).sort((a, b) => a - b);
+      setDays(initialDays);
+    }
   };
 
   useEffect(() => {
@@ -716,10 +758,11 @@ export default function App() {
         fetchData();
         alert(`Successfully seeded ${result.count} words!`);
       } else {
-        alert("Seeding failed: " + result.error);
+        alert("Seeding failed: " + (result.error || "Unknown error"));
       }
-    } catch (e) {
-      alert("Error seeding data.");
+    } catch (e: any) {
+      alert("Error seeding data: " + (e.message || "Network error"));
+      console.error("Seeding error:", e);
     }
   };
 
