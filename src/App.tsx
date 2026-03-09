@@ -60,7 +60,7 @@ const NavItem = ({ icon, label, active, onClick }: { icon: React.ReactNode, labe
   </button>
 );
 
-const Home = ({ stats, setActiveTab, onImport }: { stats: Stats | null, setActiveTab: (tab: string) => void, onImport: () => void }) => (
+const Home = ({ stats, setActiveTab, onImport, onSeed }: { stats: Stats | null, setActiveTab: (tab: string) => void, onImport: () => void, onSeed: () => void }) => (
   <div className="space-y-8 pb-24 pt-4 md:pt-20">
     <header className="space-y-2">
       <h1 className="text-4xl font-bold tracking-tight text-zinc-900">Assalamu Alaikum!</h1>
@@ -100,13 +100,22 @@ const Home = ({ stats, setActiveTab, onImport }: { stats: Stats | null, setActiv
           onClick={() => setActiveTab('exam')}
         />
         {(!stats || stats.totalWords === 0) && (
-          <button 
-            onClick={onImport}
-            className="w-full p-6 bg-white border-2 border-dashed border-zinc-200 rounded-3xl flex items-center justify-center gap-3 text-zinc-500 hover:border-emerald-300 hover:text-emerald-600 transition-all"
-          >
-            <RefreshCw size={20} />
-            <span className="font-medium">Import Vocabulary from PDF</span>
-          </button>
+          <div className="space-y-3 pt-4">
+            <button 
+              onClick={onSeed}
+              className="w-full p-6 bg-emerald-600 text-white rounded-3xl flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200"
+            >
+              <CheckCircle2 size={20} />
+              <span className="font-bold">Restore Integrated Vocabulary</span>
+            </button>
+            <button 
+              onClick={onImport}
+              className="w-full p-6 bg-white border-2 border-dashed border-zinc-200 rounded-3xl flex items-center justify-center gap-3 text-zinc-500 hover:border-emerald-300 hover:text-emerald-600 transition-all"
+            >
+              <RefreshCw size={20} />
+              <span className="font-medium">Import Custom Vocabulary</span>
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -193,7 +202,7 @@ const DailyVocabulary = ({
               >
                 <div className="flex justify-between items-start">
                   <h3 className="text-2xl font-bold text-zinc-900">{word.word}</h3>
-                  <span className="text-emerald-600 font-bangla font-semibold bg-emerald-50 px-4 py-1.5 rounded-full text-base leading-relaxed shadow-sm">
+                  <span className="text-emerald-600 font-bangla font-semibold bg-emerald-50 px-3 py-1 rounded-full text-sm leading-relaxed shadow-sm">
                     {word.meaning}
                   </span>
                 </div>
@@ -399,7 +408,7 @@ const Exam = ({ days, completedDays }: { days: number[], completedDays: number[]
         </div>
 
         <div className="space-y-6">
-          <h2 className="text-xl font-bold text-zinc-900 text-center py-8 font-bangla leading-relaxed">
+          <h2 className="text-lg font-bold text-zinc-900 text-center py-6 font-bangla leading-relaxed">
             {q.question.includes('"') ? (
               <>
                 {q.question.split('"')[0]}"
@@ -413,18 +422,18 @@ const Exam = ({ days, completedDays }: { days: number[], completedDays: number[]
               const isCorrect = opt === q.correctAnswer;
               const isSelected = opt === selectedAnswer;
               
-              let buttonClass = "w-full p-6 text-left bg-white border border-zinc-200 rounded-3xl font-bangla font-semibold text-base text-zinc-700 transition-all shadow-sm leading-relaxed flex justify-between items-center";
+              let buttonClass = "w-full p-5 text-left bg-white border border-zinc-200 rounded-2xl font-bangla font-semibold text-sm text-zinc-700 transition-all shadow-sm leading-relaxed flex justify-between items-center";
               
               if (showFeedback) {
                 if (isCorrect) {
-                  buttonClass = "w-full p-6 text-left bg-emerald-50 border-emerald-500 text-emerald-700 rounded-3xl font-bangla font-semibold text-base transition-all shadow-sm leading-relaxed flex justify-between items-center";
+                  buttonClass = "w-full p-5 text-left bg-emerald-50 border-emerald-500 text-emerald-700 rounded-2xl font-bangla font-semibold text-sm transition-all shadow-sm leading-relaxed flex justify-between items-center ring-2 ring-emerald-500/20";
                 } else if (isSelected) {
-                  buttonClass = "w-full p-6 text-left bg-red-50 border-red-500 text-red-700 rounded-3xl font-bangla font-semibold text-base transition-all shadow-sm leading-relaxed flex justify-between items-center";
+                  buttonClass = "w-full p-5 text-left bg-red-50 border-red-500 text-red-700 rounded-2xl font-bangla font-semibold text-sm transition-all shadow-sm leading-relaxed flex justify-between items-center ring-2 ring-red-500/20";
                 } else {
-                  buttonClass = "w-full p-6 text-left bg-white border border-zinc-100 text-zinc-300 rounded-3xl font-bangla font-semibold text-base transition-all shadow-sm leading-relaxed flex justify-between items-center opacity-50";
+                  buttonClass = "w-full p-5 text-left bg-white border border-zinc-100 text-zinc-300 rounded-2xl font-bangla font-semibold text-sm transition-all shadow-sm leading-relaxed flex justify-between items-center opacity-40";
                 }
               } else {
-                buttonClass += " hover:border-emerald-500 hover:bg-emerald-50";
+                buttonClass += " hover:border-emerald-500 hover:bg-emerald-50 active:scale-[0.98]";
               }
 
               return (
@@ -699,6 +708,21 @@ export default function App() {
     fetchData();
   };
 
+  const handleSeedInitial = async () => {
+    try {
+      const response = await fetch('/api/vocabulary/seed', { method: 'POST' });
+      const result = await response.json();
+      if (result.success) {
+        fetchData();
+        alert(`Successfully seeded ${result.count} words!`);
+      } else {
+        alert("Seeding failed: " + result.error);
+      }
+    } catch (e) {
+      alert("Error seeding data.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 font-sans selection:bg-emerald-100 selection:text-emerald-900">
       <div className="max-w-md mx-auto px-6 md:max-w-4xl">
@@ -710,7 +734,14 @@ export default function App() {
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
           >
-            {activeTab === 'home' && <Home stats={stats} setActiveTab={setActiveTab} onImport={() => setIsImportModalOpen(true)} />}
+            {activeTab === 'home' && (
+              <Home 
+                stats={stats} 
+                setActiveTab={setActiveTab} 
+                onImport={() => setIsImportModalOpen(true)} 
+                onSeed={handleSeedInitial}
+              />
+            )}
             {activeTab === 'daily' && <DailyVocabulary days={days} completedDays={completedDays} onCompleteDay={handleCompleteDay} />}
             {activeTab === 'exam' && <Exam days={days} completedDays={completedDays} />}
             {activeTab === 'stats' && <StatsDashboard stats={stats} />}

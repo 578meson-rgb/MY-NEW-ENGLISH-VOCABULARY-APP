@@ -90,6 +90,33 @@ async function startServer() {
     res.json({ success: true, count: words.length });
   });
 
+  app.post("/api/vocabulary/seed", (req, res) => {
+    try {
+      const initialVocabPath = path.join(process.cwd(), "src/data/initialVocabulary.json");
+      if (fs.existsSync(initialVocabPath)) {
+        const initialVocab = JSON.parse(fs.readFileSync(initialVocabPath, "utf-8"));
+        const insert = db.prepare("INSERT INTO vocabulary (word, meaning, synonym, antonym, day_number) VALUES (?, ?, ?, ?, ?)");
+        const transaction = db.transaction((words) => {
+          // Optional: Clear existing if you want a clean restore, but here we just add if missing
+          // db.prepare("DELETE FROM vocabulary").run(); 
+          for (const word of words) {
+            // Check if word already exists to avoid duplicates
+            const exists = db.prepare("SELECT id FROM vocabulary WHERE word = ?").get(word.word);
+            if (!exists) {
+              insert.run(word.word, word.meaning, word.synonym, word.antonym, word.day_number);
+            }
+          }
+        });
+        transaction(initialVocab);
+        res.json({ success: true, count: initialVocab.length });
+      } else {
+        res.status(404).json({ error: "Seed file not found" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/progress", (req, res) => {
     const completedDays = db.prepare("SELECT day_number FROM progress").all();
     res.json(completedDays.map(d => d.day_number));
