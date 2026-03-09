@@ -400,18 +400,24 @@ const Exam = ({ days, completedDays }: { days: number[], completedDays: number[]
   const finishExam = async () => {
     const accuracy = Math.round((score / questions.length) * 100);
     
-    await fetch('/api/exams', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        day_range: "Exam",
-        score: score,
-        total: questions.length,
-        accuracy: accuracy,
-        incorrect_words: incorrectWords
-      })
-    });
+    try {
+      await fetch('/api/exams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          day_range: "Exam",
+          score: score,
+          total: questions.length,
+          accuracy: accuracy,
+          incorrect_words: incorrectWords
+        })
+      });
+    } catch (e) {
+      console.error("Failed to save exam results to server");
+    }
+    
     setExamState('result');
+    fetchData();
   };
 
   if (examState === 'running') {
@@ -729,6 +735,19 @@ export default function App() {
       // Fallback on error too
       const initialDays = Array.from(new Set(initialVocabulary.map(w => w.day_number))).sort((a, b) => a - b);
       setDays(initialDays);
+      setStats({
+        totalWords: initialVocabulary.length,
+        learnedWords: 0,
+        totalTests: 0,
+        avgAccuracy: 0,
+        streak: 0,
+        weakWords: []
+      });
+      // Try to load progress from localStorage if API fails
+      const localProgress = localStorage.getItem('vocab_progress');
+      if (localProgress) {
+        setCompletedDays(JSON.parse(localProgress));
+      }
     }
   };
 
@@ -737,7 +756,15 @@ export default function App() {
   }, []);
 
   const handleCompleteDay = async (day: number) => {
-    await fetch(`/api/progress/complete/${day}`, { method: 'POST' });
+    try {
+      await fetch(`/api/progress/complete/${day}`, { method: 'POST' });
+    } catch (e) {
+      console.error("Failed to save progress to server, using local storage");
+    }
+    
+    const newProgress = [...completedDays, day];
+    setCompletedDays(newProgress);
+    localStorage.setItem('vocab_progress', JSON.stringify(newProgress));
     fetchData();
   };
 
@@ -753,12 +780,21 @@ export default function App() {
   const handleSeedInitial = async () => {
     try {
       const response = await fetch('/api/vocabulary/seed', { method: 'POST' });
-      const result = await response.json();
-      if (result.success) {
-        fetchData();
-        alert(`Successfully seeded ${result.count} words!`);
+      const contentType = response.headers.get("content-type");
+      
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const result = await response.json();
+        if (result.success) {
+          fetchData();
+          alert(`Successfully seeded ${result.count} words!`);
+        } else {
+          alert("Seeding failed: " + (result.error || "Unknown error"));
+        }
       } else {
-        alert("Seeding failed: " + (result.error || "Unknown error"));
+        // Handle non-JSON response (like a 404 HTML page)
+        const text = await response.text();
+        console.error("Server returned non-JSON response:", text);
+        alert("Server error: The backend is not responding correctly. Please check your deployment.");
       }
     } catch (e: any) {
       alert("Error seeding data: " + (e.message || "Network error"));
