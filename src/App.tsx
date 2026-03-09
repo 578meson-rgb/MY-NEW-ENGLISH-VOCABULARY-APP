@@ -14,7 +14,9 @@ import {
   ArrowLeft,
   RefreshCw,
   XCircle,
-  CheckCircle
+  CheckCircle,
+  ChevronLeft,
+  PenTool as PenIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { extractVocabFromText } from './services/geminiService';
@@ -95,10 +97,11 @@ const Home = ({ stats, setActiveTab, onImport, onSeed }: { stats: Stats | null, 
           onClick={() => setActiveTab('daily')}
         />
         <ActionButton 
-          title="Take a Quick Test" 
-          subtitle="Test your knowledge on Day 1-5" 
-          icon={<ChevronRight size={20} />} 
+          title="Start Exam" 
+          subtitle="Test your knowledge on Day 1-6" 
+          icon={<PenTool size={20} />} 
           onClick={() => setActiveTab('exam')}
+          primary
         />
         {(!stats || stats.totalWords === 0) && (
           <div className="space-y-3 pt-4">
@@ -123,16 +126,20 @@ const Home = ({ stats, setActiveTab, onImport, onSeed }: { stats: Stats | null, 
   </div>
 );
 
-const ActionButton = ({ title, subtitle, icon, onClick }: { title: string, subtitle: string, icon: React.ReactNode, onClick: () => void }) => (
+const ActionButton = ({ title, subtitle, icon, onClick, primary }: { title: string, subtitle: string, icon: React.ReactNode, onClick: () => void, primary?: boolean }) => (
   <button 
     onClick={onClick}
-    className="w-full p-6 bg-white border border-zinc-100 rounded-3xl flex items-center justify-between hover:bg-zinc-50 transition-colors shadow-sm"
+    className={`w-full p-6 rounded-3xl flex items-center justify-between transition-all shadow-sm border ${
+      primary 
+      ? 'bg-emerald-600 border-emerald-500 text-white hover:bg-emerald-700' 
+      : 'bg-white border-zinc-100 text-zinc-900 hover:bg-zinc-50'
+    }`}
   >
     <div className="text-left">
-      <h3 className="font-semibold text-zinc-900">{title}</h3>
-      <p className="text-sm text-zinc-500">{subtitle}</p>
+      <h3 className={`font-bold ${primary ? 'text-white' : 'text-zinc-900'}`}>{title}</h3>
+      <p className={`text-sm ${primary ? 'text-emerald-100' : 'text-zinc-500'}`}>{subtitle}</p>
     </div>
-    <div className="bg-zinc-100 p-2 rounded-full text-zinc-400">
+    <div className={`p-2 rounded-full ${primary ? 'bg-emerald-500 text-white' : 'bg-zinc-100 text-zinc-400'}`}>
       {icon}
     </div>
   </button>
@@ -283,8 +290,8 @@ const DailyVocabulary = ({
   );
 };
 
-const Exam = ({ days, completedDays }: { days: number[], completedDays: number[] }) => {
-  const [examState, setExamState] = useState<'setup' | 'running' | 'result'>('setup');
+const Exam = ({ days, completedDays, fetchData }: { days: number[], completedDays: number[], fetchData: () => void }) => {
+  const [examState, setExamState] = useState<'setup' | 'running' | 'result' | 'selecting-day'>('setup');
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -302,21 +309,28 @@ const Exam = ({ days, completedDays }: { days: number[], completedDays: number[]
       const res = await fetch(`/api/vocabulary/day/${value}`);
       wordsToTest = await res.json();
       if (wordsToTest.length === 0) {
-        wordsToTest = initialVocabulary.filter(w => w.day_number === value);
+        wordsToTest = initialVocabulary
+          .filter(w => w.day_number === value)
+          .map((w, i) => ({ ...w, id: -1 - i }));
       }
     } else if (type === 'range') {
       const res = await fetch(`/api/vocabulary`);
       const allWords: Word[] = await res.json();
       wordsToTest = allWords.filter(w => w.day_number >= value[0] && w.day_number <= value[1]);
       if (wordsToTest.length === 0) {
-        wordsToTest = initialVocabulary.filter(w => w.day_number >= value[0] && w.day_number <= value[1]);
+        wordsToTest = initialVocabulary
+          .filter(w => w.day_number >= value[0] && w.day_number <= value[1])
+          .map((w, i) => ({ ...w, id: -1 - i }));
       }
     } else {
       const res = await fetch(`/api/vocabulary`);
       const allWords: Word[] = await res.json();
       wordsToTest = allWords.sort(() => 0.5 - Math.random()).slice(0, 20);
       if (wordsToTest.length === 0) {
-        wordsToTest = [...initialVocabulary].sort(() => 0.5 - Math.random()).slice(0, 20);
+        wordsToTest = [...initialVocabulary]
+          .sort(() => 0.5 - Math.random())
+          .slice(0, 20)
+          .map((w, i) => ({ ...w, id: -1 - i }));
       }
     }
 
@@ -419,6 +433,43 @@ const Exam = ({ days, completedDays }: { days: number[], completedDays: number[]
     setExamState('result');
     fetchData();
   };
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-40 space-y-4">
+        <Loader2 className="animate-spin text-emerald-600" size={48} />
+        <p className="text-zinc-500 font-medium">Preparing your exam...</p>
+      </div>
+    );
+  }
+
+  if (examState === 'selecting-day') {
+    return (
+      <div className="space-y-8 pb-24 pt-4 md:pt-20">
+        <header className="flex items-center gap-4">
+          <button onClick={() => setExamState('setup')} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
+            <ChevronLeft size={24} className="text-zinc-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900">Select Day</h1>
+            <p className="text-sm text-zinc-500">Pick a day to test your knowledge.</p>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-2 gap-3">
+          {days.map(day => (
+            <button 
+              key={day}
+              onClick={() => startExam('day', day)}
+              className="p-6 bg-white border border-zinc-100 rounded-3xl font-bold text-zinc-900 hover:border-emerald-500 hover:bg-emerald-50 transition-all text-center"
+            >
+              Day {day}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (examState === 'running') {
     const q = questions[currentIdx];
@@ -551,30 +602,36 @@ const Exam = ({ days, completedDays }: { days: number[], completedDays: number[]
         <p className="text-zinc-500">Test your knowledge and track your progress.</p>
       </header>
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-zinc-900">Choose Exam Type</h2>
-        <div className="grid grid-cols-1 gap-4">
-          <ExamCard 
-            title="Day-wise Test" 
-            desc="Test words from a specific day" 
-            icon={<BookOpen size={24} />} 
-            onClick={() => {
-              const day = prompt("Enter Day Number (e.g. 1):");
-              if (day) startExam('day', parseInt(day));
-            }}
-          />
-          <ExamCard 
-            title="Combined Test" 
-            desc="Test words from Day 1 to Day 5" 
-            icon={<RefreshCw size={24} />} 
-            onClick={() => startExam('range', [1, 5])}
-          />
-          <ExamCard 
-            title="Random Challenge" 
-            desc="20 random words from all your lessons" 
-            icon={<Flame size={24} />} 
-            onClick={() => startExam('random')}
-          />
+      <div className="space-y-6">
+        <button 
+          onClick={() => startExam('random')}
+          className="w-full p-8 bg-zinc-900 text-white rounded-[40px] flex items-center justify-between hover:bg-zinc-800 transition-all shadow-xl shadow-zinc-200 group"
+        >
+          <div className="text-left space-y-1">
+            <h2 className="text-2xl font-bold">Quick Exam</h2>
+            <p className="text-zinc-400 text-sm">20 random words from all lessons</p>
+          </div>
+          <div className="bg-emerald-500 p-4 rounded-full group-hover:scale-110 transition-transform">
+            <Flame size={28} className="text-white" />
+          </div>
+        </button>
+
+        <div className="space-y-4 pt-4">
+          <h2 className="text-xl font-bold text-zinc-900">More Exam Types</h2>
+          <div className="grid grid-cols-1 gap-4">
+            <ExamCard 
+              title="Day-wise Test" 
+              desc="Test words from a specific day" 
+              icon={<BookOpen size={24} />} 
+              onClick={() => setExamState('selecting-day')}
+            />
+            <ExamCard 
+              title="Combined Test" 
+              desc="Test words from Day 1 to Day 6" 
+              icon={<RefreshCw size={24} />} 
+              onClick={() => startExam('range', [1, 6])}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -822,7 +879,7 @@ export default function App() {
               />
             )}
             {activeTab === 'daily' && <DailyVocabulary days={days} completedDays={completedDays} onCompleteDay={handleCompleteDay} />}
-            {activeTab === 'exam' && <Exam days={days} completedDays={completedDays} />}
+            {activeTab === 'exam' && <Exam days={days} completedDays={completedDays} fetchData={fetchData} />}
             {activeTab === 'stats' && <StatsDashboard stats={stats} />}
           </motion.div>
         </AnimatePresence>
